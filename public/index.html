@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <head>
+  <meta charset="UTF-8"> 
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Drive Image Search Test</title>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; margin: 2rem; }
+      input { padding: 0.5rem; width: 320px; }
+      button { padding: 0.5rem 1rem; margin-left: 0.5rem; }
+      pre { background: #f6f8fa; padding: 1rem; border-radius: 6px; white-space: pre-wrap; }
+      .row { margin: 0.5rem 0; } 
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+    }
+    .gallery {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+    }
+    .img-card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 10px;
+      width: 220px;
+      text-align: center;
+      transition: box-shadow 0.2s;
+    }
+    .img-card:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .img-card img {
+      max-width: 200px;
+      max-height: 150px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .img-card .name {
+      font-size: 14px;
+      color: #333;
+      word-break: break-all;
+    }
+  </style>
+  </head>
+  <body>
+
+  
+    <h1>Drive Image Search Test</h1>
+    <div class="row">
+      <input id="q" placeholder="Enter full/partial img ID or name..." />
+      <button id="searchBtn">Search</button>
+      <button id="refreshBtn">Refresh Cache</button>
+    </div>
+    <h3>Results</h3>
+    <pre id="out">No results yet.</pre>
+
+        
+  <h1>Google Drive Image:</h1>
+  <div class="gallery" id="gallery"></div>
+
+    <script>
+      function extractIdFromUrl(url) {
+        // Handles various Google Drive URL formats
+        // e.g. https://drive.google.com/open?id=FILEID
+        //       https://drive.google.com/file/d/FILEID/view
+        //       https://drive.google.com/uc?id=FILEID&export=download
+        let match = url.match(/id=([a-zA-Z0-9_-]+)/);
+        if (match) return match[1];
+        match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (match) return match[1];
+        return null;
+      }
+
+      const out = document.getElementById('out');
+      const q = document.getElementById('q');
+      const searchBtn = document.getElementById('searchBtn');
+      const refreshBtn = document.getElementById('refreshBtn');
+
+      searchBtn.onclick = async () => {
+        out.textContent = 'Searching...';
+        try {
+          const id = extractIdFromUrl(q.value.trim()); 
+          console.log('Extracted ID:', id);
+
+          const resp = await fetch(`/api/search?q=${encodeURIComponent(id || '')}`);
+          const data = await resp.json();
+          if (!resp.ok) {
+            out.textContent = JSON.stringify(data, null, 2);
+            return;
+          } 
+          out.textContent = JSON.stringify(data, null, 2);
+          console.log('Search results:', data);
+          // Assuming `data` is the array you logged
+          if (Array.isArray(data) && data.length > 0) {
+            const img = data[0];
+
+            // console.log('ID:', img.id);
+            // console.log('Name:', img.name);
+            // console.log('MIME:', img.mimeType);
+            // console.log('Web View:', img.webViewLink);
+            // console.log('Download:', img.webContentLink);
+
+            // Example: show name and a link in the page
+            out.textContent = `Name: ${img.name}\nID: ${img.id}\nView: ${img.webViewLink}`;
+
+            // merge with gallery display logic
+            const isImage = (img.mimeType || '').startsWith('image/');
+            let imgSrc = img.thumbnailLink ? img.thumbnailLink.replace(/=s\d+/, '=s220') : ''; 
+            // Fallbacks 
+            if(!imgSrc && isImage && img.id) { 
+                
+                imgSrc = `https://drive.google.com/uc?export=view&id=${img.id}`; 
+            } 
+            if (!imgSrc && img.webContentLink && isImage) { 
+               console.log("2");
+                imgSrc = img.webContentLink; 
+            }
+
+            const card = document.createElement('div');
+            card.className = 'img-card';
+            card.innerHTML = `
+              <a href="${img.webViewLink || '#'}" target="_blank" rel="noopener">
+                <img src="${imgSrc || ''}" alt="${img.name || ''}" loading="lazy"/>
+              </a>
+              <!-- <div class="name">${img.name || ''}</div>-->
+            `;
+            // On error, try another host if possible
+            const imageEl = card.querySelector('img');
+            imageEl.addEventListener('error', () => {
+              if (isImage && img.id) {
+                imageEl.src = `https://lh3.googleusercontent.com/d/${img.id}=s220`; // alternate host sometimes works
+              }
+            });
+
+            gallery.appendChild(card);
+
+          } else {
+            console.log('No results');
+          }
+
+        } catch (e) {
+          out.textContent = 'Error: ' + e.message;
+        }
+      };
+
+      refreshBtn.onclick = async () => {
+        out.textContent = 'Refreshing cache...';
+        try {
+          const resp = await fetch('/api/refresh', { method: 'POST' });
+          const data = await resp.json();
+          out.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          out.textContent = 'Error: ' + e.message;
+        }
+      };
+    </script>
+  </body>
+</html>
